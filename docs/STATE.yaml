@@ -1,0 +1,36 @@
+project: AgentCompany
+status: planning
+created: 2026-03-04
+last_updated: 2026-03-04
+
+description: |
+  基于 Star-Office-UI 的 2D 像素风 Agent 公司可视化系统
+  实现组织结构展示、状态监控、基础管理操作
+
+milestones:
+  - name: 项目初始化
+    status: completed
+    tasks:
+      - fork Star-Office-UI 仓库 ✓
+      - 创建项目目录结构 ✓
+      - 复制 PRD 文档 ✓
+      - 生成执行计划 ✓
+  
+  - name: V1 核心功能
+    status: pending
+    tasks:
+      - 2D 像素办公室主界面
+      - 状态可视化系统
+      - 基础交互功能
+      - 配置驱动扩展机制
+
+tech_stack:
+  - Phaser 3 (2D 游戏引擎)
+  - TypeScript
+  - Vite
+  - 后端待定 (可能 Python FastAPI)
+
+notes: |
+  - 基于 Star-Office-UI 现有代码改造
+  - 优先实现可读、可管、可扩展
+  - V1 不做 3D、重特效、游戏玩法
