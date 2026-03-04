@@ -44,6 +44,9 @@ HOME_FAVORITES_MAX = 30
 ASSET_POSITIONS_FILE = os.path.join(ROOT_DIR, "asset-positions.json")
 ASSET_DEFAULTS_FILE = os.path.join(ROOT_DIR, "asset-defaults.json")
 RUNTIME_CONFIG_FILE = os.path.join(ROOT_DIR, "runtime-config.json")
+CONFIG_DIR = os.path.join(ROOT_DIR, "config")
+ORGANIZATION_CONFIG_FILE = os.path.join(CONFIG_DIR, "organization.json")
+STATUS_REGISTRY_CONFIG_FILE = os.path.join(CONFIG_DIR, "status-registry.json")
 
 
 def get_yesterday_date_str():
@@ -390,6 +393,32 @@ def save_runtime_config(data):
     cfg.update(data or {})
     with open(RUNTIME_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def load_organization_config():
+    """Load organization configuration (departments and roles)"""
+    if os.path.exists(ORGANIZATION_CONFIG_FILE):
+        try:
+            with open(ORGANIZATION_CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception as e:
+            print(f"Failed to load organization config: {e}")
+    return {"departments": [], "roles": []}
+
+
+def load_status_registry_config():
+    """Load status registry configuration (status definitions)"""
+    if os.path.exists(STATUS_REGISTRY_CONFIG_FILE):
+        try:
+            with open(STATUS_REGISTRY_CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception as e:
+            print(f"Failed to load status registry config: {e}")
+    return {}
 
 
 def _ensure_home_favorites_index():
@@ -1646,6 +1675,26 @@ def gemini_config_set():
         return jsonify({"ok": False, "msg": str(e)}), 500
 
 
+@app.route("/config/organization", methods=["GET"])
+def get_organization_config():
+    """Get organization configuration (departments and roles)"""
+    try:
+        config = load_organization_config()
+        return jsonify({"ok": True, "config": config})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/config/status-registry", methods=["GET"])
+def get_status_registry_config():
+    """Get status registry configuration"""
+    try:
+        config = load_status_registry_config()
+        return jsonify({"ok": True, "config": config})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
 @app.route("/assets/restore-default", methods=["POST"])
 def assets_restore_default():
     guard = _require_asset_editor_auth()
@@ -1858,6 +1907,159 @@ def assets_upload():
         return jsonify({"ok": True, "path": rel_path, "size": st.st_size, "backup": backup})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+# ============================================================================
+# Multi-Department Multi-Role API Endpoints
+# ============================================================================
+
+# Mock data for departments and roles
+DEPARTMENTS = [
+    {"id": "tech", "name": "Tech", "color": "#4A90E2"},
+    {"id": "investment", "name": "Investment", "color": "#50C878"},
+    {"id": "content", "name": "Content", "color": "#FFB347"}
+]
+
+ROLES = [
+    {"id": "spark", "name": "Spark", "title": "CEO", "departmentId": None, "avatar": "spark.png"},
+    {"id": "forge", "name": "Forge", "title": "Tech Lead", "departmentId": "tech", "avatar": "forge.png"},
+    {"id": "finley", "name": "Finley", "title": "Investment Analyst", "departmentId": "investment", "avatar": "finley.png"},
+    {"id": "quill", "name": "Quill", "title": "Content Writer", "departmentId": "content", "avatar": "quill.png"}
+]
+
+# In-memory storage for role statuses
+ROLE_STATUSES = {
+    "spark": {
+        "statusCode": "working",
+        "currentTask": "Review Q1 roadmap",
+        "lastUpdatedAt": "2026-03-04T09:00:00Z",
+        "riskLevel": "low",
+        "blockers": []
+    },
+    "forge": {
+        "statusCode": "idle",
+        "currentTask": "Waiting for new tasks",
+        "lastUpdatedAt": "2026-03-04T08:30:00Z",
+        "riskLevel": "low",
+        "blockers": []
+    },
+    "finley": {
+        "statusCode": "working",
+        "currentTask": "Analyzing market trends",
+        "lastUpdatedAt": "2026-03-04T09:15:00Z",
+        "riskLevel": "medium",
+        "blockers": []
+    },
+    "quill": {
+        "statusCode": "idle",
+        "currentTask": "Ready for content assignments",
+        "lastUpdatedAt": "2026-03-04T08:45:00Z",
+        "riskLevel": "low",
+        "blockers": []
+    }
+}
+
+
+@app.route("/api/departments", methods=["GET"])
+def get_departments():
+    """Return list of departments"""
+    return jsonify(DEPARTMENTS), 200
+
+
+@app.route("/api/roles", methods=["GET"])
+def get_roles():
+    """Return list of roles (optionally filter by department)"""
+    department_id = request.args.get("departmentId")
+
+    if department_id:
+        filtered_roles = [role for role in ROLES if role.get("departmentId") == department_id]
+        return jsonify(filtered_roles), 200
+
+    return jsonify(ROLES), 200
+
+
+@app.route("/api/roles/<role_id>/status", methods=["GET"])
+def get_role_status(role_id):
+    """Return status for a specific role"""
+    if not role_id:
+        return jsonify({"error": "Role ID is required"}), 400
+
+    # Check if role exists
+    role = next((r for r in ROLES if r["id"] == role_id), None)
+    if not role:
+        return jsonify({"error": "Role not found"}), 404
+
+    # Get status or return default
+    status = ROLE_STATUSES.get(role_id)
+    if not status:
+        status = {
+            "statusCode": "idle",
+            "currentTask": "No task assigned",
+            "lastUpdatedAt": datetime.now().isoformat() + "Z",
+            "riskLevel": "low",
+            "blockers": []
+        }
+
+    return jsonify(status), 200
+
+
+@app.route("/api/roles/<role_id>/status", methods=["POST"])
+def update_role_status(role_id):
+    """Update status for a specific role"""
+    if not role_id:
+        return jsonify({"error": "Role ID is required"}), 400
+
+    # Check if role exists
+    role = next((r for r in ROLES if r["id"] == role_id), None)
+    if not role:
+        return jsonify({"error": "Role not found"}), 404
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body is required"}), 400
+
+        # Get current status or create new one
+        current_status = ROLE_STATUSES.get(role_id, {
+            "statusCode": "idle",
+            "currentTask": "",
+            "lastUpdatedAt": datetime.now().isoformat() + "Z",
+            "riskLevel": "low",
+            "blockers": []
+        })
+
+        # Validate statusCode if provided
+        if "statusCode" in data:
+            valid_status_codes = ["idle", "working", "blocked", "completed"]
+            if data["statusCode"] not in valid_status_codes:
+                return jsonify({"error": f"Invalid statusCode. Must be one of: {', '.join(valid_status_codes)}"}), 400
+
+        # Validate riskLevel if provided
+        if "riskLevel" in data:
+            valid_risk_levels = ["low", "medium", "high"]
+            if data["riskLevel"] not in valid_risk_levels:
+                return jsonify({"error": f"Invalid riskLevel. Must be one of: {', '.join(valid_risk_levels)}"}), 400
+
+        # Validate blockers if provided
+        if "blockers" in data:
+            if not isinstance(data["blockers"], list):
+                return jsonify({"error": "blockers must be an array"}), 400
+
+        # Partial update: merge with current status
+        updated_status = {
+            "statusCode": data.get("statusCode", current_status["statusCode"]),
+            "currentTask": data.get("currentTask", current_status["currentTask"]),
+            "lastUpdatedAt": datetime.now().isoformat() + "Z",
+            "riskLevel": data.get("riskLevel", current_status["riskLevel"]),
+            "blockers": data.get("blockers", current_status["blockers"])
+        }
+
+        ROLE_STATUSES[role_id] = updated_status
+
+        return jsonify(updated_status), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

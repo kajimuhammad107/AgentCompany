@@ -1,0 +1,13 @@
+{
+  "departments": [
+    {"id": "tech", "name": "Tech", "color": "#4A90E2"},
+    {"id": "investment", "name": "Investment", "color": "#50C878"},
+    {"id": "content", "name": "Content", "color": "#FFB347"}
+  ],
+  "roles": [
+    {"id": "spark", "name": "Spark", "title": "CEO", "departmentId": null, "avatar": "spark.png"},
+    {"id": "forge", "name": "Forge", "title": "Tech Lead", "departmentId": "tech", "avatar": "forge.png"},
+    {"id": "finley", "name": "Finley", "title": "Investment Analyst", "departmentId": "investment", "avatar": "finley.png"},
+    {"id": "quill", "name": "Quill", "title": "Content Writer", "departmentId": "content", "avatar": "quill.png"}
+  ]
+}

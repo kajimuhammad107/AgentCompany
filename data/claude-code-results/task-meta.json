@@ -1,0 +1,13 @@
+{
+  "task_name": "AgentCompany-阶段1-配置",
+  "telegram_group": "",
+  "callback_group": "",
+  "callback_dm": "",
+  "callback_account": "",
+  "callback_session": "",
+  "prompt": "你是配置开发团队。执行 Task 1.2：配置文件定义。\n\n参考 docs/EXECUTION_PLAN.md 中的 Task 1.2 详细要求。\n\n目标：\n1. 创建 config/organization.json（组织结构配置）\n   - 3 个部门：Tech, Investment, Content\n   - 4 个角色：Spark(CEO), Forge(Tech Lead), Finley(Investment Analyst), Quill(Content Writer)\n2. 创建 config/status-registry.json（状态语义映射）\n   - 5 种状态：idle, working, speaking, tool_calling, error\n   - 每种状态包含：label, color, icon, animation\n3. 修改 backend/app.py，加载这两个配置文件\n4. 补全配置加载的单元测试\n\n验收标准：\n- 配置文件格式正确（JSON 格式）\n- 后端能正确加载配置\n- 测试通过",
+  "workdir": "/Users/jelly/Documents/AIProjects/AgentCompany",
+  "started_at": "2026-03-04T10:01:23+08:00",
+  "agent_teams": true,
+  "status": "running"
+}

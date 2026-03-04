@@ -1,0 +1,32 @@
+{
+  "idle": {
+    "label": "空闲",
+    "color": "#888",
+    "icon": "💤",
+    "animation": "idle"
+  },
+  "working": {
+    "label": "工作中",
+    "color": "#4A90E2",
+    "icon": "💻",
+    "animation": "typing"
+  },
+  "speaking": {
+    "label": "沟通中",
+    "color": "#50C878",
+    "icon": "💬",
+    "animation": "talking"
+  },
+  "tool_calling": {
+    "label": "调用工具",
+    "color": "#FFB347",
+    "icon": "🔧",
+    "animation": "tool"
+  },
+  "error": {
+    "label": "异常",
+    "color": "#E74C3C",
+    "icon": "⚠️",
+    "animation": "error"
+  }
+}
