@@ -202,6 +202,16 @@ const TYPEWRITER_DELAY = 50;
 let agents = {}; // agentId -> sprite/container
 let lastAgentsFetch = 0;
 const AGENTS_FETCH_INTERVAL = 2500;
+let detailPanel = null;
+let currentFilter = null; // 'tech', 'investment', 'content', or null
+let filterButtons = {};
+let refreshButton = null;
+let isRefreshing = false;
+
+// === 角色系统（新增）===
+let roles = {}; // roleId -> container
+let lastRolesFetch = 0;
+const ROLES_FETCH_INTERVAL = 5000;
 
 // agent 颜色配置
 const AGENT_COLORS = {
@@ -553,6 +563,8 @@ function create() {
 
   loadMemo();
   fetchStatus();
+  fetchRoles(); // 初始化加载角色
+  createUIButtons(); // 创建 UI 按钮
   // 先强制加一个测试用的尼卡 agent 渲染
   const testNika = {
     agentId: 'agent_nika',
@@ -590,6 +602,7 @@ function create() {
 function update(time) {
   if (time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
   if (time - lastAgentsFetch > AGENTS_FETCH_INTERVAL) { fetchAgents(); lastAgentsFetch = time; }
+  if (time - lastRolesFetch > ROLES_FETCH_INTERVAL) { fetchRoles(); lastRolesFetch = time; }
 
   const effectiveStateForServer = pendingDesiredState || currentState;
   if (serverroom) {
@@ -995,6 +1008,425 @@ function renderAgent(agent) {
       statusDot.fillColor = dotColor;
     }
   }
+}
+
+// === 角色系统函数（新增）===
+
+// 状态码到动画的映射
+const STATUS_TO_ANIMATION = {
+  idle: 'idle',
+  working: 'working',
+  speaking: 'working',  // 复用 working 动画
+  tool_calling: 'working',  // 复用 working 动画
+  error: 'error'
+};
+
+// 状态码到图标的映射
+const STATUS_TO_ICON = {
+  idle: '💤',
+  working: '💻',
+  speaking: '💬',
+  tool_calling: '🔧',
+  error: '⚠️'
+};
+
+// 获取所有角色及其状态
+async function fetchRoles() {
+  try {
+    // 1. 获取角色列表
+    const rolesResponse = await fetch('/api/roles?t=' + Date.now(), { cache: 'no-store' });
+    const rolesData = await rolesResponse.json();
+
+    if (!Array.isArray(rolesData)) return;
+
+    // 2. 获取每个角色的状态
+    for (let role of rolesData) {
+      try {
+        const statusResponse = await fetch(`/api/roles/${role.id}/status?t=` + Date.now(), { cache: 'no-store' });
+        const statusData = await statusResponse.json();
+
+        // 合并角色信息和状态
+        const roleWithStatus = {
+          ...role,
+          statusCode: statusData.statusCode || 'idle',
+          currentTask: statusData.currentTask || '',
+          riskLevel: statusData.riskLevel || 'low',
+          blockers: statusData.blockers || []
+        };
+
+        renderRole(roleWithStatus);
+      } catch (error) {
+        console.error(`获取角色 ${role.id} 状态失败:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('获取角色列表失败:', error);
+  }
+}
+
+// 渲染单个角色
+function renderRole(role) {
+  const roleId = role.id;
+  const name = role.name || 'Unknown';
+  const title = role.title || '';
+  const statusCode = role.statusCode || 'idle';
+
+  // 从 LAYOUT.roles 获取位置配置
+  const layoutConfig = LAYOUT.roles[roleId];
+  if (!layoutConfig) {
+    console.warn(`角色 ${roleId} 没有在 LAYOUT.roles 中配置位置`);
+    return;
+  }
+
+  const baseX = layoutConfig.x;
+  const baseY = layoutConfig.y;
+  const scale = layoutConfig.scale || 1.0;
+
+  // 获取动画和图标
+  const animation = STATUS_TO_ANIMATION[statusCode] || 'idle';
+  const icon = STATUS_TO_ICON[statusCode] || '💤';
+
+  if (!roles[roleId]) {
+    // 新建角色容器
+    const container = game.add.container(baseX, baseY);
+    container.setDepth(500); // 角色层级
+
+    // 角色精灵（使用星星图标作为占位符）
+    const roleSprite = game.add.text(0, 0, '⭐', {
+      fontFamily: 'ArkPixel, monospace',
+      fontSize: Math.round(48 * scale) + 'px'
+    }).setOrigin(0.5);
+    roleSprite.name = 'roleSprite';
+
+    // 名字标签
+    const nameTag = game.add.text(0, -50 * scale, name, {
+      fontFamily: 'ArkPixel, monospace',
+      fontSize: Math.round(16 * scale) + 'px',
+      fill: '#ffffff',
+      stroke: '#000',
+      strokeThickness: 3,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      padding: { x: 8, y: 4 }
+    }).setOrigin(0.5);
+    nameTag.name = 'nameTag';
+
+    // 职位标签
+    const titleTag = game.add.text(0, -30 * scale, title, {
+      fontFamily: 'ArkPixel, monospace',
+      fontSize: Math.round(12 * scale) + 'px',
+      fill: '#ffd700',
+      stroke: '#000',
+      strokeThickness: 2,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      padding: { x: 6, y: 2 }
+    }).setOrigin(0.5);
+    titleTag.name = 'titleTag';
+
+    // 状态图标
+    const statusIcon = game.add.text(30 * scale, -30 * scale, icon, {
+      fontFamily: 'ArkPixel, monospace',
+      fontSize: Math.round(20 * scale) + 'px'
+    }).setOrigin(0.5);
+    statusIcon.name = 'statusIcon';
+
+    // 高亮边框（hover 时显示）
+    const hoverBorder = game.add.circle(0, 0, 30 * scale, 0xffffff, 0);
+    hoverBorder.setStrokeStyle(3, 0xffd700, 0);
+    hoverBorder.name = 'hoverBorder';
+
+    container.add([hoverBorder, roleSprite, nameTag, titleTag, statusIcon]);
+
+    // 设置交互
+    container.setSize(60 * scale, 60 * scale);
+    container.setInteractive({ useHandCursor: true });
+
+    // hover 效果
+    container.on('pointerover', () => {
+      const border = container.getByName('hoverBorder');
+      if (border) border.setStrokeStyle(3, 0xffd700, 1);
+    });
+
+    container.on('pointerout', () => {
+      const border = container.getByName('hoverBorder');
+      if (border) border.setStrokeStyle(3, 0xffd700, 0);
+    });
+
+    // 点击显示详情
+    container.on('pointerdown', () => {
+      showRoleDetailPanel(role);
+    });
+
+    // 存储角色数据
+    container.roleData = role;
+
+    roles[roleId] = container;
+  } else {
+    // 更新现有角色
+    const container = roles[roleId];
+    container.setPosition(baseX, baseY);
+    container.roleData = role;
+
+    // 更新状态图标
+    const statusIcon = container.list.find(child => child.name === 'statusIcon');
+    if (statusIcon) {
+      statusIcon.setText(icon);
+    }
+
+    // 部门筛选透明度
+    const department = role.department || '';
+    let alpha = 1;
+    if (currentFilter && department.toLowerCase() !== currentFilter) {
+      alpha = 0.3;
+    }
+    container.setAlpha(alpha);
+
+    // TODO: 根据 animation 播放对应动画（当有精灵表时）
+    // 目前使用简单的图标表示
+  }
+}
+
+// 显示角色详情面板
+function showRoleDetailPanel(role) {
+  // 关闭已有面板
+  if (detailPanel) {
+    detailPanel.destroy();
+    detailPanel = null;
+  }
+
+  const panelWidth = 360;
+  const panelHeight = 280;
+  const panelX = 640;
+  const panelY = 360;
+
+  const container = game.add.container(panelX, panelY);
+  container.setDepth(3000);
+
+  // 背景
+  const bg = game.add.rectangle(0, 0, panelWidth, panelHeight, 0x2d3748, 0.98);
+  bg.setStrokeStyle(4, 0x1e293b);
+
+  // 标题栏
+  const titleBg = game.add.rectangle(0, -panelHeight/2 + 20, panelWidth, 40, 0x1e293b);
+  const titleText = game.add.text(0, -panelHeight/2 + 20, '角色详情', {
+    fontFamily: 'ArkPixel, monospace',
+    fontSize: '18px',
+    fill: '#ffd700',
+    fontWeight: 'bold'
+  }).setOrigin(0.5);
+
+  // 关闭按钮
+  const closeBtn = game.add.text(panelWidth/2 - 20, -panelHeight/2 + 20, '✕', {
+    fontFamily: 'ArkPixel, monospace',
+    fontSize: '22px',
+    fill: '#ef4444'
+  }).setOrigin(0.5);
+  closeBtn.setInteractive({ useHandCursor: true });
+  closeBtn.on('pointerdown', () => {
+    if (detailPanel) {
+      detailPanel.destroy();
+      detailPanel = null;
+    }
+  });
+  closeBtn.on('pointerover', () => {
+    closeBtn.setFill('#ff6b6b');
+  });
+  closeBtn.on('pointerout', () => {
+    closeBtn.setFill('#ef4444');
+  });
+
+  // 内容区域
+  const contentY = -80;
+  const lineHeight = 32;
+
+  const fields = [
+    { label: '名称', value: role.name || 'N/A' },
+    { label: '职位', value: role.title || 'N/A' },
+    { label: '部门', value: role.department || 'N/A' },
+    { label: '状态', value: role.statusCode || 'idle' },
+    { label: '详情', value: role.statusDetail || role.currentTask || '无' }
+  ];
+
+  const contentElements = [];
+  fields.forEach((field, i) => {
+    const y = contentY + i * lineHeight;
+    const label = game.add.text(-panelWidth/2 + 24, y, field.label + ':', {
+      fontFamily: 'ArkPixel, monospace',
+      fontSize: '15px',
+      fill: '#94a3b8'
+    }).setOrigin(0, 0.5);
+
+    const value = game.add.text(-panelWidth/2 + 90, y, field.value, {
+      fontFamily: 'ArkPixel, monospace',
+      fontSize: '15px',
+      fill: '#f1f5f9'
+    }).setOrigin(0, 0.5);
+
+    contentElements.push(label, value);
+  });
+
+  container.add([bg, titleBg, titleText, closeBtn, ...contentElements]);
+
+  // 点击面板外关闭
+  const overlay = game.add.rectangle(640, 360, 1280, 720, 0x000000, 0.01);
+  overlay.setDepth(2999);
+  overlay.setInteractive();
+  overlay.on('pointerdown', () => {
+    if (detailPanel) {
+      detailPanel.destroy();
+      detailPanel = null;
+    }
+    overlay.destroy();
+  });
+
+  detailPanel = container;
+}
+
+// 创建 UI 按钮（部门筛选 + 刷新）
+function createUIButtons() {
+  const buttonY = 40;
+  const buttonWidth = 90;
+  const buttonHeight = 36;
+  const buttonSpacing = 10;
+
+  // 部门颜色
+  const deptColors = {
+    tech: 0x4A90E2,
+    investment: 0x50C878,
+    content: 0xFFB347
+  };
+
+  const deptNames = {
+    tech: 'Tech',
+    investment: 'Investment',
+    content: 'Content'
+  };
+
+  // 创建部门筛选按钮
+  let startX = 1280 - 20 - buttonWidth;
+  ['content', 'investment', 'tech'].forEach((dept, index) => {
+    const x = startX - index * (buttonWidth + buttonSpacing);
+    const container = game.add.container(x, buttonY);
+    container.setDepth(4000);
+
+    const bg = game.add.rectangle(0, 0, buttonWidth, buttonHeight, deptColors[dept], 0.9);
+    bg.setStrokeStyle(2, 0x000000);
+    bg.name = 'bg';
+
+    const text = game.add.text(0, 0, deptNames[dept], {
+      fontFamily: 'ArkPixel, monospace',
+      fontSize: '14px',
+      fill: '#ffffff',
+      fontWeight: 'bold'
+    }).setOrigin(0.5);
+    text.name = 'text';
+
+    container.add([bg, text]);
+    container.setSize(buttonWidth, buttonHeight);
+    container.setInteractive({ useHandCursor: true });
+
+    // hover 效果
+    container.on('pointerover', () => {
+      const bgRect = container.getByName('bg');
+      if (bgRect) bgRect.setAlpha(1);
+    });
+
+    container.on('pointerout', () => {
+      const bgRect = container.getByName('bg');
+      if (bgRect && currentFilter !== dept) bgRect.setAlpha(0.9);
+    });
+
+    // 点击筛选
+    container.on('pointerdown', () => {
+      if (currentFilter === dept) {
+        // 取消筛选
+        currentFilter = null;
+        // 重置所有按钮
+        Object.values(filterButtons).forEach(btn => {
+          const bgRect = btn.getByName('bg');
+          if (bgRect) bgRect.setAlpha(0.9);
+        });
+      } else {
+        // 应用筛选
+        currentFilter = dept;
+        // 高亮当前按钮
+        Object.entries(filterButtons).forEach(([key, btn]) => {
+          const bgRect = btn.getByName('bg');
+          if (bgRect) {
+            bgRect.setAlpha(key === dept ? 1 : 0.9);
+          }
+        });
+      }
+      // 更新所有角色的透明度
+      Object.values(roles).forEach(roleContainer => {
+        const roleData = roleContainer.roleData;
+        if (roleData) {
+          const department = roleData.department || '';
+          let alpha = 1;
+          if (currentFilter && department.toLowerCase() !== currentFilter) {
+            alpha = 0.3;
+          }
+          roleContainer.setAlpha(alpha);
+        }
+      });
+    });
+
+    filterButtons[dept] = container;
+  });
+
+  // 创建刷新按钮
+  const refreshX = startX - 3 * (buttonWidth + buttonSpacing) - 10;
+  const refreshContainer = game.add.container(refreshX, buttonY);
+  refreshContainer.setDepth(4000);
+
+  const refreshBg = game.add.rectangle(0, 0, buttonWidth, buttonHeight, 0x22c55e, 0.9);
+  refreshBg.setStrokeStyle(2, 0x000000);
+  refreshBg.name = 'bg';
+
+  const refreshIcon = game.add.text(0, 0, '🔄', {
+    fontFamily: 'ArkPixel, monospace',
+    fontSize: '20px'
+  }).setOrigin(0.5);
+  refreshIcon.name = 'icon';
+
+  refreshContainer.add([refreshBg, refreshIcon]);
+  refreshContainer.setSize(buttonWidth, buttonHeight);
+  refreshContainer.setInteractive({ useHandCursor: true });
+
+  // hover 效果
+  refreshContainer.on('pointerover', () => {
+    const bgRect = refreshContainer.getByName('bg');
+    if (bgRect && !isRefreshing) bgRect.setFillStyle(0x16a34a);
+  });
+
+  refreshContainer.on('pointerout', () => {
+    const bgRect = refreshContainer.getByName('bg');
+    if (bgRect && !isRefreshing) bgRect.setFillStyle(0x22c55e);
+  });
+
+  // 点击刷新
+  refreshContainer.on('pointerdown', () => {
+    if (isRefreshing) return;
+
+    isRefreshing = true;
+    const icon = refreshContainer.getByName('icon');
+
+    // 旋转动画
+    game.tweens.add({
+      targets: icon,
+      angle: 360,
+      duration: 600,
+      ease: 'Linear',
+      onComplete: () => {
+        icon.angle = 0;
+        isRefreshing = false;
+      }
+    });
+
+    // 立即刷新角色状态
+    fetchRoles();
+  });
+
+  refreshButton = refreshContainer;
 }
 
 // 启动游戏

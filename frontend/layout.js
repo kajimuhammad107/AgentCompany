@@ -22,6 +22,54 @@ const LAYOUT = {
     breakroom:   { x: 640, y: 360 }
   },
 
+  // === 部门布局（水平三等分）===
+  // Tech 左、Investment 中、Content 右
+  departments: {
+    tech: {
+      x: 100,
+      y: 200,
+      width: 350,
+      height: 400
+    },
+    investment: {
+      x: 465,
+      y: 200,
+      width: 350,
+      height: 400
+    },
+    content: {
+      x: 830,
+      y: 200,
+      width: 350,
+      height: 400
+    }
+  },
+
+  // === 角色位置配置 ===
+  // Spark (CEO) 居中顶部，其他角色分布在各自部门
+  roles: {
+    spark: {
+      x: 640,
+      y: 80,
+      scale: 1.2  // CEO 稍大
+    },
+    forge: {
+      x: 275,
+      y: 350,
+      scale: 1.0  // Tech 部门
+    },
+    finley: {
+      x: 640,
+      y: 350,
+      scale: 1.0  // Investment 部门
+    },
+    quill: {
+      x: 1005,
+      y: 350,
+      scale: 1.0  // Content 部门
+    }
+  },
+
   // === 装饰与家具：坐标 + 原点 + depth ===
   furniture: {
     // 沙发
